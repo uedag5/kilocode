@@ -123,6 +123,44 @@ describe("CerebrasHandler", () => {
 			await expect(generator.next()).rejects.toThrow()
 		})
 
+		it("should retry with exponential backoff on 429 errors", async () => {
+			vi.useFakeTimers()
+
+			const mockRateLimitResponse = {
+				ok: false,
+				status: 429,
+				text: () => Promise.resolve('{"error": {"message": "Rate limit exceeded"}}'),
+			}
+			const mockSuccessResponse = {
+				ok: true,
+				body: {
+					getReader: () => ({
+						read: vi.fn().mockResolvedValueOnce({ done: true, value: new Uint8Array() }),
+						releaseLock: vi.fn(),
+					}),
+				},
+			}
+
+			// Fail twice, then succeed
+			vi.mocked(fetch)
+				.mockResolvedValueOnce(mockRateLimitResponse as any)
+				.mockResolvedValueOnce(mockRateLimitResponse as any)
+				.mockResolvedValueOnce(mockSuccessResponse as any)
+
+			const generator = handler.createMessage("System prompt", [])
+			const promise = generator.next() // Start the process
+
+			// Advance timers to trigger retries
+			await vi.advanceTimersByTimeAsync(2000) // 1st retry wait
+			await vi.advanceTimersByTimeAsync(4000) // 2nd retry wait
+
+			await promise // Await the final success
+
+			expect(fetch).toHaveBeenCalledTimes(3)
+
+			vi.useRealTimers()
+		})
+
 		it("should parse streaming responses correctly", async () => {
 			// Test streaming response parsing
 			// Mock ReadableStream with various data chunks
@@ -160,6 +198,42 @@ describe("CerebrasHandler", () => {
 
 			const result = await handler.completePrompt("Test prompt")
 			expect(result).toBe("Test response")
+		})
+
+		it("should retry with exponential backoff on 429 errors", async () => {
+			vi.useFakeTimers()
+
+			const mockRateLimitResponse = {
+				ok: false,
+				status: 429,
+				text: () => Promise.resolve('{"error": {"message": "Rate limit exceeded"}}'),
+			}
+			const mockSuccessResponse = {
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						choices: [{ message: { content: "Test response" } }],
+					}),
+			}
+
+			// Fail twice, then succeed
+			vi.mocked(fetch)
+				.mockResolvedValueOnce(mockRateLimitResponse as any)
+				.mockResolvedValueOnce(mockRateLimitResponse as any)
+				.mockResolvedValueOnce(mockSuccessResponse as any)
+
+			const promise = handler.completePrompt("Test prompt")
+
+			// Advance timers to trigger retries
+			await vi.advanceTimersByTimeAsync(2000)
+			await vi.advanceTimersByTimeAsync(4000)
+
+			const result = await promise
+
+			expect(fetch).toHaveBeenCalledTimes(3)
+			expect(result).toBe("Test response")
+
+			vi.useRealTimers()
 		})
 	})
 

@@ -97,6 +97,66 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 		}
 	}
 
+	/**
+	 * Makes a request to the Cerebras API with exponential backoff on rate limit errors.
+	 */
+	private async fetchWithRetry(
+		url: string,
+		options: RequestInit,
+		maxRetries = 5,
+		initialWaitMs = 2000,
+	): Promise<Response> {
+		let response: Response | null = null
+		for (let i = 0; i < maxRetries; i++) {
+			response = await fetch(url, options)
+
+			if (response.ok) {
+				return response
+			}
+
+			// Retry only on 429 Rate Limit Error
+			if (response.status === 429 && i < maxRetries - 1) {
+				const waitTime = initialWaitMs * 2 ** i
+				await new Promise((resolve) => setTimeout(resolve, waitTime))
+			} else {
+				// For other errors or the last retry, break the loop and return the failed response
+				break
+			}
+		}
+		// The response will not be null here because the loop runs at least once.
+		return response!
+	}
+
+	/**
+	 * Handles API errors by parsing the response and throwing a more specific error.
+	 */
+	private async handleApiError(response: Response): Promise<never> {
+		const errorText = await response.text()
+
+		let errorMessage = "Unknown error"
+		try {
+			const errorJson = JSON.parse(errorText)
+			errorMessage = errorJson.error?.message || errorJson.message || JSON.stringify(errorJson, null, 2)
+		} catch {
+			errorMessage = errorText || `HTTP ${response.status}`
+		}
+
+		// Provide more actionable error messages
+		if (response.status === 401) {
+			throw new Error(t("common:errors.cerebras.authenticationFailed"))
+		} else if (response.status === 403) {
+			throw new Error(t("common:errors.cerebras.accessForbidden"))
+		} else if (response.status === 429) {
+			throw new Error(t("common:errors.cerebras.rateLimitExceeded"))
+		} else if (response.status >= 500) {
+			throw new Error(t("common:errors.cerebras.serverError", { status: response.status }))
+		} else {
+			throw new Error(
+				t("common:errors.cerebras.genericError", { status: response.status, message: errorMessage }),
+			)
+		}
+	}
+
 	getModel(): { id: CerebrasModelId; info: (typeof cerebrasModels)[CerebrasModelId] } {
 		const originalModelId = (this.options.apiModelId as CerebrasModelId) || this.defaultProviderModelId
 
@@ -146,7 +206,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 		}
 
 		try {
-			const response = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
+			const response = await this.fetchWithRetry(`${CEREBRAS_BASE_URL}/chat/completions`, {
 				method: "POST",
 				headers: {
 					...DEFAULT_HEADERS,
@@ -157,30 +217,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 			})
 
 			if (!response.ok) {
-				const errorText = await response.text()
-
-				let errorMessage = "Unknown error"
-				try {
-					const errorJson = JSON.parse(errorText)
-					errorMessage = errorJson.error?.message || errorJson.message || JSON.stringify(errorJson, null, 2)
-				} catch {
-					errorMessage = errorText || `HTTP ${response.status}`
-				}
-
-				// Provide more actionable error messages
-				if (response.status === 401) {
-					throw new Error(t("common:errors.cerebras.authenticationFailed"))
-				} else if (response.status === 403) {
-					throw new Error(t("common:errors.cerebras.accessForbidden"))
-				} else if (response.status === 429) {
-					throw new Error(t("common:errors.cerebras.rateLimitExceeded"))
-				} else if (response.status >= 500) {
-					throw new Error(t("common:errors.cerebras.serverError", { status: response.status }))
-				} else {
-					throw new Error(
-						t("common:errors.cerebras.genericError", { status: response.status, message: errorMessage }),
-					)
-				}
+				await this.handleApiError(response)
 			}
 
 			if (!response.body) {
@@ -288,7 +325,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 		}
 
 		try {
-			const response = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
+			const response = await this.fetchWithRetry(`${CEREBRAS_BASE_URL}/chat/completions`, {
 				method: "POST",
 				headers: {
 					...DEFAULT_HEADERS,
@@ -299,22 +336,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 			})
 
 			if (!response.ok) {
-				const errorText = await response.text()
-
-				// Provide consistent error handling with createMessage
-				if (response.status === 401) {
-					throw new Error(t("common:errors.cerebras.authenticationFailed"))
-				} else if (response.status === 403) {
-					throw new Error(t("common:errors.cerebras.accessForbidden"))
-				} else if (response.status === 429) {
-					throw new Error(t("common:errors.cerebras.rateLimitExceeded"))
-				} else if (response.status >= 500) {
-					throw new Error(t("common:errors.cerebras.serverError", { status: response.status }))
-				} else {
-					throw new Error(
-						t("common:errors.cerebras.genericError", { status: response.status, message: errorText }),
-					)
-				}
+				await this.handleApiError(response)
 			}
 
 			const result = await response.json()
