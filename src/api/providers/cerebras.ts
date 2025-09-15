@@ -103,8 +103,8 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 	private async fetchWithRetry(
 		url: string,
 		options: RequestInit,
-		maxRetries = 5,
-		initialWaitMs = 2000,
+		maxRetries = 10,
+		initialWaitMs = 4000,
 	): Promise<Response> {
 		let response: Response | null = null
 		for (let i = 0; i < maxRetries; i++) {
@@ -116,7 +116,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 
 			// Retry only on 429 Rate Limit Error
 			if (response.status === 429 && i < maxRetries - 1) {
-				const waitTime = initialWaitMs * 2 ** i
+				const waitTime = Math.min(initialWaitMs * 2 ** i, 30000)
 				await new Promise((resolve) => setTimeout(resolve, waitTime))
 			} else {
 				// For other errors or the last retry, break the loop and return the failed response
