@@ -21,7 +21,7 @@ export type ApiHandlerOptions = Omit<ProviderSettings, "apiProvider"> & {
 	modelMaxRetries?: number
 
 	/**
-	 * Delay between retries in milliseconds
+	 * Initial delay (ms) used as the base for exponential backoff when retrying rate-limited requests
 	 */
 	modelRetryDelay?: number
 }

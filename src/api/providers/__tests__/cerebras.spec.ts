@@ -221,6 +221,103 @@ describe("CerebrasHandler", () => {
 			vi.useRealTimers()
 		})
 
+		it("should fall back to exponential backoff when rate limit headers are missing", async () => {
+			const rateLimitError = {
+				ok: false,
+				status: 429,
+				headers: new Headers(),
+				text: vi.fn().mockResolvedValue('{"error": {"message": "Rate limit exceeded"}}'),
+			}
+			const mockResponse = {
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ choices: [{ message: { content: "Backoff success" } }] }),
+			}
+
+			vi.mocked(fetch)
+				.mockResolvedValueOnce(rateLimitError as any)
+				.mockResolvedValueOnce(rateLimitError as any)
+				.mockResolvedValueOnce(mockResponse as any)
+
+			vi.useFakeTimers()
+			const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5)
+
+			const promise = handler.completePrompt("Test prompt")
+
+			await vi.advanceTimersByTimeAsync(1000)
+			await vi.advanceTimersByTimeAsync(2000)
+
+			const result = await promise
+			expect(result).toBe("Backoff success")
+			expect(fetch).toHaveBeenCalledTimes(3)
+
+			randomSpy.mockRestore()
+			vi.useRealTimers()
+		})
+
+		it("should respect Retry-After header expressed in seconds", async () => {
+			const rateLimitError = {
+				ok: false,
+				status: 429,
+				headers: new Headers({ "retry-after": "3" }),
+				text: vi.fn().mockResolvedValue('{"error": {"message": "Rate limit exceeded"}}'),
+			}
+			const mockResponse = {
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ choices: [{ message: { content: "Retry-After seconds" } }] }),
+			}
+
+			vi.mocked(fetch)
+				.mockResolvedValueOnce(rateLimitError as any)
+				.mockResolvedValueOnce(mockResponse as any)
+
+			vi.useFakeTimers()
+
+			const promise = handler.completePrompt("Test prompt")
+
+			await vi.advanceTimersByTimeAsync(3000)
+
+			const result = await promise
+			expect(result).toBe("Retry-After seconds")
+			expect(fetch).toHaveBeenCalledTimes(2)
+
+			vi.useRealTimers()
+		})
+
+		it("should respect Retry-After header expressed as HTTP date", async () => {
+			const now = new Date("2025-09-16T00:00:00Z")
+			const retryAfterDate = new Date(now.getTime() + 5000)
+			const rateLimitError = {
+				ok: false,
+				status: 429,
+				headers: new Headers({ "retry-after": retryAfterDate.toUTCString() }),
+				text: vi.fn().mockResolvedValue('{"error": {"message": "Rate limit exceeded"}}'),
+			}
+			const mockResponse = {
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ choices: [{ message: { content: "Retry-After date" } }] }),
+			}
+
+			vi.mocked(fetch)
+				.mockResolvedValueOnce(rateLimitError as any)
+				.mockResolvedValueOnce(mockResponse as any)
+
+			vi.useFakeTimers()
+			vi.setSystemTime(now)
+
+			const promise = handler.completePrompt("Test prompt")
+
+			await vi.advanceTimersByTimeAsync(5000)
+
+			const result = await promise
+			expect(result).toBe("Retry-After date")
+			expect(fetch).toHaveBeenCalledTimes(2)
+
+			vi.useRealTimers()
+		})
+
 		it("should retry multiple times on consecutive rate limit errors and then succeed", async () => {
 			const rateLimitError = {
 				ok: false,

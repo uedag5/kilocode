@@ -15,6 +15,8 @@ import { t } from "../../i18n"
 
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 const CEREBRAS_DEFAULT_TEMPERATURE = 0
+const MAX_BACKOFF_DELAY_MS = 120_000
+const BACKOFF_JITTER_RATIO = 0.2
 
 /**
  * Removes thinking tokens from text to prevent model confusion when processing conversation history.
@@ -112,8 +114,7 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 		const response = await fetch(url, options)
 
 		if (response.status === 429 && retryCount < this.maxRetries - 1) {
-			const resetTime = response.headers.get("x-ratelimit-reset-tokens-minute")
-			const waitTime = resetTime ? parseInt(resetTime, 10) * 1000 + 1000 : this.retryDelay
+			const waitTime = this.getRetryWaitTime(response.headers, retryCount)
 
 			// Wait for the specified time before retrying
 			await new Promise((resolve) => setTimeout(resolve, waitTime))
@@ -123,6 +124,75 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 		}
 
 		return response
+	}
+
+	private getRetryWaitTime(headers: Headers, retryCount: number): number {
+		const cerebrasReset = this.parseCerebrasResetHeader(headers)
+		if (cerebrasReset !== null) {
+			return cerebrasReset
+		}
+
+		const retryAfter = this.parseRetryAfterHeader(headers)
+		if (retryAfter !== null) {
+			return retryAfter
+		}
+
+		return this.calculateBackoffDelay(retryCount)
+	}
+
+	private parseCerebrasResetHeader(headers: Headers): number | null {
+		const headerNames = [
+			"x-ratelimit-reset-tokens-minute",
+			"x-ratelimit-reset-requests-minute",
+			"x-ratelimit-reset-tokens-second",
+			"x-ratelimit-reset-requests-second",
+		]
+
+		for (const name of headerNames) {
+			const value = headers.get(name)
+			if (!value) {
+				continue
+			}
+
+			const seconds = Number.parseFloat(value)
+			if (Number.isNaN(seconds) || seconds < 0) {
+				continue
+			}
+
+			return Math.max(0, seconds * 1000 + 1000)
+		}
+
+		return null
+	}
+
+	private parseRetryAfterHeader(headers: Headers): number | null {
+		const retryAfter = headers.get("retry-after")
+		if (!retryAfter) {
+			return null
+		}
+
+		const seconds = Number(retryAfter)
+		if (Number.isFinite(seconds) && seconds >= 0) {
+			return Math.max(this.retryDelay, seconds * 1000)
+		}
+
+		const parsedDate = Date.parse(retryAfter)
+		if (!Number.isNaN(parsedDate)) {
+			const delta = parsedDate - Date.now()
+			if (delta > 0) {
+				return Math.max(this.retryDelay, delta)
+			}
+		}
+
+		return null
+	}
+
+	private calculateBackoffDelay(retryCount: number): number {
+		const exponential = Math.min(this.retryDelay * 2 ** retryCount, MAX_BACKOFF_DELAY_MS)
+		const jitterRange = exponential * BACKOFF_JITTER_RATIO
+		const jitter = jitterRange * (Math.random() * 2 - 1)
+		const waitTime = Math.round(exponential + jitter)
+		return Math.max(this.retryDelay, waitTime)
 	}
 
 	getModel(): { id: CerebrasModelId; info: (typeof cerebrasModels)[CerebrasModelId] } {
