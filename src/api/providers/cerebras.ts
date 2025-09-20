@@ -9,6 +9,9 @@ import { convertToOpenAiMessages } from "../transform/openai-format"
 import { XmlMatcher } from "../../utils/xml-matcher"
 
 import type { ApiHandlerCreateMessageMetadata, SingleCompletionHandler } from "../index"
+// kilocode_change start
+import * as vscode from "vscode"
+// kilocode_change end
 import { BaseProvider } from "./base-provider"
 import { DEFAULT_HEADERS } from "./constants"
 import { t } from "../../i18n"
@@ -115,6 +118,13 @@ export class CerebrasHandler extends BaseProvider implements SingleCompletionHan
 
 		if (response.status === 429 && retryCount < this.maxRetries - 1) {
 			const waitTime = this.getRetryWaitTime(response.headers, retryCount)
+
+			// kilocode_change start
+			// 待機中にさりげない通知を表示（トースト風）
+			vscode.window.showInformationMessage(
+				`Cerebras APIのレート制限により、${Math.round(waitTime / 1000)}秒待機します。`,
+			)
+			// kilocode_change end
 
 			// Wait for the specified time before retrying
 			await new Promise((resolve) => setTimeout(resolve, waitTime))
