@@ -13,6 +13,11 @@
 		"addCredit": "Thêm tín dụng",
 		"lowBalance": "Số dư Kilo Code của bạn thấp"
 	},
+	"pagination": {
+		"previous": "Trước",
+		"next": "Tiếp",
+		"page": "Trang {{page}} / {{count}}"
+	},
 	"invalidModel": {
 		"alphaPeriodEnded": "🎉 Giai đoạn alpha cho {{model}} đã kết thúc! Chuyển sang mô hình khác để tiếp tục.",
 		"notAllowedForTeam": "⚠️ Tổ chức của bạn không cho phép sử dụng mô hình {{model}}. Chuyển sang mô hình khác để tiếp tục.",
@@ -199,7 +204,6 @@
 	"ghost": {
 		"title": "Autocomplete",
 		"settings": {
-			"autoTrigger": "Kích Hoạt Tự Động",
 			"triggers": "Bộ Kích Hoạt",
 			"keybindingDescription": "Các tính năng Autocomplete có thể được kích hoạt bằng lệnh. Bạn có thể cấu hình <DocsLink>Phím Tắt ở đây</DocsLink>.",
 			"enableAutoTrigger": {
@@ -211,11 +215,11 @@
 				"description": "Độ trễ tính bằng giây trước khi Kilo Code kích hoạt Autocomplete sau khi bạn ngừng gõ. Độ trễ ngắn hơn có nghĩa là gợi ý nhanh hơn, nhưng có thể tốn nhiều tài nguyên hơn."
 			},
 			"enableQuickInlineTaskKeybinding": {
-				"label": "Tác Vụ Nhanh",
+				"label": "Tác vụ nhanh ({{keybinding}})",
 				"description": "Chỉ cần một thay đổi nhanh? Chọn một số mã (hoặc không!) và nhấn Cmd+I. Mô tả mục tiêu của bạn bằng tiếng Việt đơn giản (\"tạo component React với những props này\", \"thêm xử lý lỗi vào hàm này\"), và nhận nhiều gợi ý sẵn sàng sử dụng ngay trong editor của bạn. <DocsLink>Xem phím tắt</DocsLink>"
 			},
 			"enableSmartInlineTaskKeybinding": {
-				"label": "Autocomplete Thủ Công",
+				"label": "Tự động hoàn thành thủ công ({{keybinding}})",
 				"description": "Cần sửa chữa nhanh, hoàn thành, hoặc tái cấu trúc? Kilo sẽ sử dụng ngữ cảnh xung quanh để cung cấp cải tiến ngay lập tức, giữ bạn trong luồng làm việc. <DocsLink>Xem phím tắt</DocsLink>"
 			},
 			"enableCustomProvider": {
@@ -227,7 +231,8 @@
 				"label": "Cấu Hình API",
 				"current": "Sử dụng cấu hình API hiện được chọn",
 				"description": "Chọn cấu hình API để sử dụng cho các prompt Autocomplete, hoặc chỉ sử dụng cái hiện được chọn"
-			}
+			},
+			"keybindingNotFound": "không tìm thấy"
 		}
 	},
 	"virtualProvider": {

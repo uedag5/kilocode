@@ -878,9 +878,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			const message = this.messageQueueService.dequeueMessage()
 
 			if (message) {
-				setTimeout(async () => {
-					await this.submitUserMessage(message.text, message.images)
-				}, 0)
+				// Check if this is a tool approval ask that needs to be handled
+				if (
+					type === "tool" ||
+					type === "command" ||
+					type === "browser_action_launch" ||
+					type === "use_mcp_server"
+				) {
+					// For tool approvals, we need to approve first, then send the message if there's text/images
+					this.handleWebviewAskResponse("yesButtonClicked", message.text, message.images)
+				} else {
+					// For other ask types (like followup), fulfill the ask directly
+					this.setMessageResponse(message.text, message.images)
+				}
 			}
 		}
 
@@ -1878,7 +1888,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				let inputTokens = 0
 				let outputTokens = 0
 				let totalCost: number | undefined
-				let usageMissing = false // kilocode_change
+
+				// kilocode_change start
+				let usageMissing = false
+				const apiRequestStartTime = performance.now()
+				// kilocode_change end
 
 				// We can't use `api_req_finished` anymore since it's a unique case
 				// where it could come after a streaming message (i.e. in the middle
@@ -2147,6 +2161,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											tokens.cacheWrite,
 											tokens.cacheRead,
 										),
+									completionTime: performance.now() - apiRequestStartTime, // kilocode_change
 								})
 							}
 						}
@@ -3075,5 +3090,29 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	public get cwd() {
 		return this.workspacePath
+	}
+
+	/**
+	 * Process any queued messages by dequeuing and submitting them.
+	 * This ensures that queued user messages are sent when appropriate,
+	 * preventing them from getting stuck in the queue.
+	 *
+	 * @param context - Context string for logging (e.g., the calling tool name)
+	 */
+	public processQueuedMessages(): void {
+		try {
+			if (!this.messageQueueService.isEmpty()) {
+				const queued = this.messageQueueService.dequeueMessage()
+				if (queued) {
+					setTimeout(() => {
+						this.submitUserMessage(queued.text, queued.images).catch((err) =>
+							console.error(`[Task] Failed to submit queued message:`, err),
+						)
+					}, 0)
+				}
+			}
+		} catch (e) {
+			console.error(`[Task] Queue processing error:`, e)
+		}
 	}
 }
